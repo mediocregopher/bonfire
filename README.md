@@ -23,18 +23,14 @@ the `Meet` messages to are known to be "ready to mingle" (more on that in step
 
 4) Peers `peerB,peerC,...peerN` send some number of `Hello` messages to `peerA`.
 
-5) When `peerA` receives some number of `Hello` messages, it knows it is stable
-(i.e. it has met and can communicate with other stable hosts in the network as
-well). `peerA` may then send some number of `ReadyToMingle` messages to
-`serverA`, which can then send `Meet` messages to `peerA` as needed (see step
-3). If `peerA` never receives any `Hello` messages from other peers, it may need
-to perform gateway port forwarding or some other steps before going back to step
-1.
+5) When `peerA` receives some number of `Hello` messages, it is done connecting
+(i.e. it has met and can communicate with other host in the network). If `peerA`
+never receives any `Hello` messages from other peers, it may need to perform
+gateway port forwarding or some other steps before going back to step 1.
 
-
-A peer which does not wish to receive `Meet` messages need not ever send a
-`ReadyToMingle` message to the bonfire server (step 5). Such a peer is called
-anti-social.
+6) `peerA` may then send some number of `ReadyToMingle` messages to `serverA`,
+which can then send `Meet` messages to `peerA` as needed (see step 3). A peer
+which chooses not to do this is called anti-social.
 
 ## Protocol
 
@@ -46,7 +42,6 @@ TODO make fingerprint bigger to allow for hmacs
 
 ```
 [msgVersion:1][fingerprint:64][msgType:1][body...]
-
 ```
 
 * `msgVersion` (1 byte): used to possibly enable backwards incompatible-changes
@@ -69,7 +64,7 @@ TODO make fingerprint bigger to allow for hmacs
     * The ready-to-mingle peers will then use `fingerprintA` when sending
       `Hello` messages back to the original peer (step 4).
 
-    * A peer may use any fingerprint in `ReadyToMingle` messages (step 5).
+    * A peer may use any fingerprint in `ReadyToMingle` messages (step 6).
 
 * `msgType` (1 byte): An indicator of what type of message is being
   sent/received. The message type affects what further fields are expected in
@@ -77,7 +72,7 @@ TODO make fingerprint bigger to allow for hmacs
 
     * `0` -> `Hello` message, no further fields expected.
 
-    * `1` -> `Meet` message, further fields: `[proto:1][rest...]`. `proto` is an
+    * `1` -> `Meet` message, further fields: `[proto:1][...]`. `proto` is an
       indicator of the protocol the peer to be met is listening on, and its
       value affects what further fields are expected. Currently only one
       protocol is supported:
