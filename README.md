@@ -38,8 +38,6 @@ A bonfire message is encapsulated in a single UDP packet. It is composed of the
 following sequential fields. Each field but the last is of a fixed byte size,
 with bytes being in big-endian (network) order.
 
-TODO make fingerprint bigger to allow for hmacs
-
 ```
 [msgVersion:1][fingerprint:64][msgType:1][body...]
 ```
