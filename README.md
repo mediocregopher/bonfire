@@ -13,24 +13,41 @@ The rough protocol for doing so is as follows:
 1) `peerA`, a new peer to the p2p network, opens any UDP listen port. `peerA`
 may be behind any number of NATs, it does not know yet.
 
-2) `peerA` sends some number of `Hello` messages from that port to the bonfire
-server, `serverA`, whose ip/port must be known ahead of time.
+2) `peerA` sends some number of `HelloServer` messages from that port to the
+bonfire server, `serverA`, whose ip/port must be known ahead of time.
 
-3) For each `Hello`, `serverA` sends one `Meet` message, containing the source
-address it saw from `peerA`, to peers `peerB,peerC,...peerN`. The peers it sends
-the `Meet` messages to are known to be "ready to mingle" (more on that in step
-5).
+3) For each `HelloServer`, `serverA` sends one `Meet` message, containing the
+source address it saw from `peerA`, to peers `peerB,peerC,...peerN`. The peers
+it sends the `Meet` messages to are known to be "ready to mingle" (more on that
+in step 5).
 
-4) Peers `peerB,peerC,...peerN` send some number of `Hello` messages to `peerA`.
+4) Peers `peerB,peerC,...peerN` send some number of `HelloPeer` messages to
+`peerA`.
 
-5) When `peerA` receives some number of `Hello` messages, it is done connecting
-(i.e. it has met and can communicate with other host in the network). If `peerA`
-never receives any `Hello` messages from other peers, it may need to perform
-gateway port forwarding or some other steps before going back to step 1.
+    a) If, in step 3, the server knew of no peers which were "ready to mingle"
+    it can send some number of `HelloPeer` messages to `peerA` instead.
 
-6) `peerA` may then send some number of `ReadyToMingle` messages to `serverA`,
-which can then send `Meet` messages to `peerA` as needed (see step 3). A peer
-which chooses not to do this is called anti-social.
+5) When `peerA` receives some number of `HelloPeer` messages, it is done
+connecting (i.e. it has met and can communicate with other host in the network).
+If `peerA` never receives any `HelloPeer` messages from other peers, it may need
+to perform gateway port forwarding or some other steps before going back to step
+1.
+
+    a) If `peerA` receives a `HelloPeer` message from `serverA`'s address (both
+    ip and port), it should continue on to step 6, but should not consider
+    `serverA` to be a peer for future operation.
+
+    b) `HelloPeer` message contain in them the address they are being sent to,
+    so that the peer receiving them (in this case, `peerA`) can know its own
+    public address.
+
+6) `peerA` may then periodically send some number of `ReadyToMingle` messages to
+`serverA`, which can then send `Meet` messages to `peerA` as needed (see step
+3). A peer which chooses not to do this is called anti-social.
+
+    a) If `peerA` doesn't know of any other peers (e.g. because it is the first
+    one), or not enough peers, it may repeat from step 1 as needed to discover
+    more peers.
 
 ## Protocol
 
@@ -68,20 +85,31 @@ with bytes being in big-endian (network) order.
   sent/received. The message type affects what further fields are expected in
   the body of the message.
 
-    * `0` -> `Hello` message, no further fields expected.
+    * `0` -> `HelloServer` message, no further fields expected.
 
-    * `1` -> `Meet` message, further fields: `[proto:1][...]`. `proto` is an
-      indicator of the protocol the peer to be met is listening on, and its
-      value affects what further fields are expected. Currently only one
-      protocol is supported:
+    * `1` -> `HelloPeer` message, further fields: `[addr:?]`. See addr section
+      for how addresses are encoded.
 
-        * `0` -> UDP, further fields: `[port:2][ip:?]`. `port` is the 16-bit
-          integer value indicating which UDP port the peer to be met is
-          listening on. `ip` is the byte encoded ipv4 or ipv6 address the peer
-          to be met can be found at. The size of ip can be used to determine
-          which version it is (ipv4: 4 bytes, ipv6: 16 bytes).
+    * `2` -> `Meet` message, further fields: `[addr:?]`. See addr section for
+      how addresses are encoded.
 
-    * `2` -> `ReadyToMingle` message, no further fields expected.
+    * `3` -> `ReadyToMingle` message, no further fields expected.
+
+### addrs
+
+An addr field encodes a single internet address and the protocol which is being
+listened for at that address. Due to the way addr is formatted, it must be the
+last field in the message.
+
+The encoding is as follows: `[proto:1][...]`.
+
+* `proto` (1 byte): Currently only one protocol is supported:
+
+    * `0` -> UDP, further fields: `[port:2][ip:?]`. `port` is the 16-bit
+      integer value indicating which UDP port the peer to be met is
+      listening on. `ip` is the byte encoded ipv4 or ipv6 address the peer
+      to be met can be found at. The size of ip can be used to determine
+      which version it is (ipv4: 4 bytes, ipv6: 16 bytes).
 
 The maximum message size possible is 85 bytes (a `Meet` message using ipv6). Any
 packet which is larger, or does not conform to expected field values, may be
