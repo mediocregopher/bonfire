@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Server implements a bonfire server which can listen and handle clients on a
+// Server implements a bonfire server which can listen for and handle peers on a
 // single network address.
 type Server struct {
 	// Errors encountered when interacting with peers will be written
@@ -35,11 +35,11 @@ type Server struct {
 	// their fingerprint. If FingerprintCheck returns false the packet is
 	// dropped.
 	//
-	// One example use-case is the client and server having a
-	// pre-shared key, and the client using a random set of bytes and an
-	// HMAC-SHA1 of those bytes, and setting the fingerprint to the
-	// concatenation of those two values. The server can then use
-	// FingerprintCheck to ensure that all clients know the pre-shared secret.
+	// One example use-case is the peer and server having a pre-shared key, and
+	// the peer using a random set of bytes and an HMAC-SHA1 of those bytes, and
+	// setting the fingerprint to the concatenation of those two values. The
+	// server can then use FingerprintCheck to ensure that all peers know the
+	// pre-shared secret.
 	FingerprintCheck func([]byte) bool
 
 	conn       net.PacketConn // created and set during Listen

@@ -1,5 +1,5 @@
-// Package bonfire implements a client library for discovering peers in a p2p
-// application using a bonfire server.
+// Package bonfire implements both the peer and server portions of the bonfire
+// protocol.
 package bonfire
 
 import (
@@ -13,6 +13,9 @@ import (
 // MaxMessageSize is the maximum number of bytes a Message could possibly be
 // when marshaled.
 const MaxMessageSize = 85
+
+// FingerprintSize is the length of the Fingerprint field in a Message.
+const FingerprintSize = 64
 
 // MessageType enumerates the type of a bonfire message being sent/received.
 type MessageType byte
@@ -79,7 +82,7 @@ type HelloPeerBody struct {
 // Message describes a bonfire message can be read to or written from a
 // connection.
 type Message struct {
-	Fingerprint []byte // expected to be 64 bytes long
+	Fingerprint []byte // expected to be FingerprintSize bytes long
 	Type        MessageType
 
 	HelloPeerBody // Only used when Type == HelloPeer
@@ -90,7 +93,7 @@ type Message struct {
 func (m Message) MarshalBinary() ([]byte, error) {
 	b := make([]byte, 0, MaxMessageSize)
 	b = append(b, 0) // version
-	b = append(b, m.Fingerprint[:64]...)
+	b = append(b, m.Fingerprint[:FingerprintSize]...)
 	b = append(b, byte(m.Type))
 
 	marshalAddr := func(addr string) error {
@@ -136,7 +139,7 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	}
 
 	version := read(1)
-	m.Fingerprint = read(64)
+	m.Fingerprint = read(FingerprintSize)
 	typ := read(1)
 	if err != nil {
 		return err

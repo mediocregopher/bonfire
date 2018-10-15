@@ -64,7 +64,7 @@ func TestMessage(t *T) {
 	for _, test := range tests {
 		msg := test.msg
 
-		msg.Fingerprint = make([]byte, 64)
+		msg.Fingerprint = make([]byte, FingerprintSize)
 		mrand.Read(msg.Fingerprint)
 		expPrefix := append([]byte{0}, msg.Fingerprint...)
 
