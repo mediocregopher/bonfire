@@ -140,23 +140,6 @@ func (s *Server) getMinglers(n int) []net.Addr {
 	return s.mingleZSet.get(n, time.Now().Add(-s.ReadyToMingleTimeout))
 }
 
-func (s *Server) multiSend(msg Message, dst net.Addr) error {
-	b, err := msg.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	// This doesn't use a write timeout, because it ought to happen within a
-	// go-routine separate from the message processing, and writing should never
-	// really block anyway.
-	for i := 0; i < s.PacketBlastCount; i++ {
-		if _, err := s.conn.WriteTo(b, dst); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Server) handlePacket(b []byte, src net.Addr) {
 	var msg Message
 	if err := msg.UnmarshalBinary(b); err != nil {
@@ -170,30 +153,30 @@ func (s *Server) handlePacket(b []byte, src net.Addr) {
 
 	switch msg.Type {
 	case HelloServer:
-		meetMsg := Message{
-			Fingerprint: msg.Fingerprint,
-			Type:        Meet,
-			MeetBody: MeetBody{
-				Addr: src.String(),
-			},
-		}
 		minglers := s.getMinglers(s.PeersToMeet)
 		for _, minglerAddr := range minglers {
-			if err := s.multiSend(meetMsg, minglerAddr); err != nil {
+			err := multiSend(minglerAddr, s.conn, s.PacketBlastCount, Message{
+				Fingerprint: msg.Fingerprint,
+				Type:        Meet,
+				MeetBody: MeetBody{
+					Addr: src.String(),
+				},
+			})
+			if err != nil {
 				s.err(err)
 			}
 		}
 		// if the server didn't have as many minglers available as it wanted to,
 		// it sends a Hello from itself.
 		if len(minglers) < s.PeersToMeet {
-			helloMsg := Message{
+			err := multiSend(src, s.conn, s.PacketBlastCount, Message{
 				Fingerprint: msg.Fingerprint,
 				Type:        HelloPeer,
 				HelloPeerBody: HelloPeerBody{
 					Addr: src.String(),
 				},
-			}
-			if err := s.multiSend(helloMsg, src); err != nil {
+			})
+			if err != nil {
 				s.err(err)
 			}
 		}
