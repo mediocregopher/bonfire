@@ -71,12 +71,12 @@ func splitHostPort(addr string) ([]byte, uint16, error) {
 
 // MeetBody describes further fields which are used for Meet messages.
 type MeetBody struct {
-	Addr string
+	Addr net.Addr
 }
 
 // HelloPeerBody describes further fields which are used for HelloPeer messages.
 type HelloPeerBody struct {
-	Addr string
+	Addr net.Addr
 }
 
 // Message describes a bonfire message can be read to or written from a
@@ -96,9 +96,12 @@ func (m Message) MarshalBinary() ([]byte, error) {
 	b = append(b, m.Fingerprint[:FingerprintSize]...)
 	b = append(b, byte(m.Type))
 
-	marshalAddr := func(addr string) error {
+	marshalAddr := func(addr net.Addr) error {
+		if addr.Network() != "udp" {
+			return fmt.Errorf("invalid address network: %q", addr.Network())
+		}
 		b = append(b, 0) // proto:udp
-		ip, port, err := splitHostPort(addr)
+		ip, port, err := splitHostPort(addr.String())
 		if err != nil {
 			return err
 		}
@@ -152,24 +155,26 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		return errors.New("malformed message: invalid type")
 	}
 
-	unmarshalAddr := func() string {
+	unmarshalAddr := func() (addr net.Addr) {
 		if proto := read(1); err != nil {
-			return ""
+			return
 		} else if proto[0] != 0 {
 			err = fmt.Errorf("malformed message: %s: invalid proto", m.Type.String())
-			return ""
+			return
 		}
 		portB := read(2)
 		ip := b
 		if err != nil {
-			return ""
+			return
 		} else if len(ip) != 4 && len(ip) != 16 {
 			err = fmt.Errorf("malformed message: %s: invalid ip", m.Type.String())
-			return ""
+			return
 		}
 
 		port := binary.BigEndian.Uint16(portB)
-		return net.JoinHostPort(net.IP(ip).String(), strconv.Itoa(int(port)))
+		addrStr := net.JoinHostPort(net.IP(ip).String(), strconv.Itoa(int(port)))
+		addr, err = net.ResolveUDPAddr("udp", addrStr)
+		return
 	}
 
 	if m.Type == HelloPeer {

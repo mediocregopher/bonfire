@@ -159,7 +159,7 @@ func (s *Server) handlePacket(b []byte, src net.Addr) {
 				Fingerprint: msg.Fingerprint,
 				Type:        Meet,
 				MeetBody: MeetBody{
-					Addr: src.String(),
+					Addr: src,
 				},
 			})
 			if err != nil {
@@ -173,7 +173,7 @@ func (s *Server) handlePacket(b []byte, src net.Addr) {
 				Fingerprint: msg.Fingerprint,
 				Type:        HelloPeer,
 				HelloPeerBody: HelloPeerBody{
-					Addr: src.String(),
+					Addr: src,
 				},
 			})
 			if err != nil {

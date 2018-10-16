@@ -2,11 +2,20 @@ package bonfire
 
 import (
 	"bytes"
+	"net"
 	"reflect"
 	. "testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 )
+
+func addrString(str string) net.Addr {
+	addr, err := net.ResolveUDPAddr("udp", str)
+	if err != nil {
+		panic(err)
+	}
+	return addr
+}
 
 func TestMessage(t *T) {
 	type testT struct {
@@ -23,7 +32,7 @@ func TestMessage(t *T) {
 			Message{
 				Type: HelloPeer,
 				HelloPeerBody: HelloPeerBody{
-					Addr: "127.0.0.1:6666",
+					Addr: addrString("127.0.0.1:6666"),
 				},
 			},
 			[]byte{0x1, 0x0, 0x1a, 0xa, 0x7f, 0x0, 0x0, 0x1},
@@ -32,7 +41,7 @@ func TestMessage(t *T) {
 			Message{
 				Type: HelloPeer,
 				HelloPeerBody: HelloPeerBody{
-					Addr: "[::1]:6666",
+					Addr: addrString("[::1]:6666"),
 				},
 			},
 			[]byte{0x1, 0x0, 0x1a, 0xa, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
@@ -41,7 +50,7 @@ func TestMessage(t *T) {
 			Message{
 				Type: Meet,
 				MeetBody: MeetBody{
-					Addr: "127.0.0.1:6666",
+					Addr: addrString("127.0.0.1:6666"),
 				},
 			},
 			[]byte{0x2, 0x0, 0x1a, 0xa, 0x7f, 0x0, 0x0, 0x1},
@@ -50,7 +59,7 @@ func TestMessage(t *T) {
 			Message{
 				Type: Meet,
 				MeetBody: MeetBody{
-					Addr: "[::1]:6666",
+					Addr: addrString("[::1]:6666"),
 				},
 			},
 			[]byte{0x2, 0x0, 0x1a, 0xa, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
