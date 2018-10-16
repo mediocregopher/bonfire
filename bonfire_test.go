@@ -23,6 +23,8 @@ func TestMessage(t *T) {
 		exp []byte  // sans the leading version/fingerprint
 	}
 
+	randFingerprint := mrand.Bytes(FingerprintSize)
+
 	tests := []testT{
 		{
 			Message{Type: HelloServer},
@@ -50,19 +52,25 @@ func TestMessage(t *T) {
 			Message{
 				Type: Meet,
 				MeetBody: MeetBody{
-					Addr: addrString("127.0.0.1:6666"),
+					Fingerprint: randFingerprint,
+					Addr:        addrString("127.0.0.1:6666"),
 				},
 			},
-			[]byte{0x2, 0x0, 0x1a, 0xa, 0x7f, 0x0, 0x0, 0x1},
+			append(
+				append([]byte{0x2}, randFingerprint...),
+				[]byte{0x0, 0x1a, 0xa, 0x7f, 0x0, 0x0, 0x1}...),
 		},
 		{
 			Message{
 				Type: Meet,
 				MeetBody: MeetBody{
-					Addr: addrString("[::1]:6666"),
+					Fingerprint: randFingerprint,
+					Addr:        addrString("[::1]:6666"),
 				},
 			},
-			[]byte{0x2, 0x0, 0x1a, 0xa, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
+			append(
+				append([]byte{0x2}, randFingerprint...),
+				[]byte{0x0, 0x1a, 0xa, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1}...),
 		},
 		{
 			Message{Type: ReadyToMingle},

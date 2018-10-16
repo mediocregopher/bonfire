@@ -28,16 +28,16 @@ in step 5).
     it can send some number of `HelloPeer` messages to `peerA` instead.
 
 5) When `peerA` receives some number of `HelloPeer` messages, it is done
-connecting (i.e. it has met and can communicate with other host in the network).
-If `peerA` never receives any `HelloPeer` messages from other peers, it may need
-to perform gateway port forwarding or some other steps before going back to step
-1.
+connecting (i.e. it has met and can communicate with other hosts in the
+network).  If `peerA` never receives any `HelloPeer` messages from other peers,
+it may need to perform gateway port forwarding or some other steps before going
+back to step 1.
 
     a) If `peerA` receives a `HelloPeer` message from `serverA`'s address (both
     ip and port), it should continue on to step 6, but should not consider
     `serverA` to be a peer for future operation.
 
-    b) `HelloPeer` message contain in them the address they are being sent to,
+    b) `HelloPeer` messages contain in them the address they are being sent to,
     so that the peer receiving them (in this case, `peerA`) can know its own
     public address.
 
@@ -70,14 +70,14 @@ with bytes being in big-endian (network) order.
   mechanism must be pre-arranged between the peer and server, and is not defined
   in this spec.
 
-    * `fingerprintA` is generated and sent with the first `Hello` message to
-      the server (step 2).
+    * `fingerprintA` is generated and sent with the first `HelloServer` message
+      to the server (step 2).
 
     * The server will send `fingerprintA` in its `Meet` messages to the
       ready-to-mingle peers (step 3).
 
     * The ready-to-mingle peers will then use `fingerprintA` when sending
-      `Hello` messages back to the original peer (step 4).
+      `HelloPeer` messages back to the original peer (step 4).
 
     * A peer may use any fingerprint in `ReadyToMingle` messages (step 6).
 
@@ -90,8 +90,11 @@ with bytes being in big-endian (network) order.
     * `1` -> `HelloPeer` message, further fields: `[addr:?]`. See addr section
       for how addresses are encoded.
 
-    * `2` -> `Meet` message, further fields: `[addr:?]`. See addr section for
-      how addresses are encoded.
+    * `2` -> `Meet` message, further fields: `[fingerprint:64][addr:?]`. See
+      addr section for how addresses are encoded.
+
+        * The fingerprint is the one the receiving peer should use when sending
+          its subsequent `HelloPeer` message.
 
     * `3` -> `ReadyToMingle` message, no further fields expected.
 
@@ -111,6 +114,9 @@ The encoding is as follows: `[proto:1][...]`.
       to be met can be found at. The size of ip can be used to determine
       which version it is (ipv4: 4 bytes, ipv6: 16 bytes).
 
-The maximum message size possible is 85 bytes (a `Meet` message using ipv6). Any
-packet which is larger, or does not conform to expected field values, may be
-discarded by any peer or bonfire server.
+### Message sizes
+
+The minimum message possible is 66 bytes, and the maximum message size possible
+is 149 bytes (a `Meet` message using ipv6).  Any packet which is not within this
+range, or does not conform to expected field values, may be discarded by any
+peer or bonfire server.

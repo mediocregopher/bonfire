@@ -132,11 +132,11 @@ func (s *Server) err(err error) {
 	}
 }
 
-func (s *Server) addMingler(addr net.Addr) {
-	s.mingleZSet.add(addr)
+func (s *Server) addMingler(addr net.Addr, fingerprint []byte) {
+	s.mingleZSet.add(addr, fingerprint)
 }
 
-func (s *Server) getMinglers(n int) []net.Addr {
+func (s *Server) getMinglers(n int) []zsetEl {
 	return s.mingleZSet.get(n, time.Now().Add(-s.ReadyToMingleTimeout))
 }
 
@@ -154,12 +154,13 @@ func (s *Server) handlePacket(b []byte, src net.Addr) {
 	switch msg.Type {
 	case HelloServer:
 		minglers := s.getMinglers(s.PeersToMeet)
-		for _, minglerAddr := range minglers {
-			err := multiSend(minglerAddr, s.conn, s.PacketBlastCount, Message{
-				Fingerprint: msg.Fingerprint,
+		for _, mingler := range minglers {
+			err := multiSend(mingler.addr, s.conn, s.PacketBlastCount, Message{
+				Fingerprint: mingler.fingerprint,
 				Type:        Meet,
 				MeetBody: MeetBody{
-					Addr: src,
+					Fingerprint: msg.Fingerprint,
+					Addr:        src,
 				},
 			})
 			if err != nil {
@@ -182,7 +183,7 @@ func (s *Server) handlePacket(b []byte, src net.Addr) {
 		}
 
 	case ReadyToMingle:
-		s.addMingler(src)
+		s.addMingler(src, msg.Fingerprint)
 	default:
 		return
 	}

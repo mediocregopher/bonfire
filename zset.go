@@ -18,8 +18,9 @@ type zset struct {
 }
 
 type zsetEl struct {
-	t    time.Time
-	addr net.Addr
+	t           time.Time
+	addr        net.Addr
+	fingerprint []byte
 }
 
 func newZSet() *zset {
@@ -30,7 +31,7 @@ func newZSet() *zset {
 	}
 }
 
-func (z *zset) add(addr net.Addr) {
+func (z *zset) add(addr net.Addr, fingerprint []byte) {
 	z.Lock()
 	defer z.Unlock()
 
@@ -40,29 +41,31 @@ func (z *zset) add(addr net.Addr) {
 		z.timeL.Remove(listEls[0])
 	}
 
-	el := zsetEl{time.Now(), addr}
+	el := zsetEl{time.Now(), addr, fingerprint}
 	listEls[0] = z.timeL.PushBack(el)
 	if listEls[1] == nil {
 		listEls[1] = z.usageL.PushBack(el)
+	} else {
+		listEls[1].Value = el
 	}
 	z.m[addrStr] = listEls
 }
 
-func (z *zset) get(n int, expire time.Time) []net.Addr {
+func (z *zset) get(n int, expire time.Time) []zsetEl {
 	z.Lock()
 	defer z.Unlock()
 
-	addrs := make([]net.Addr, 0, n)
+	zEls := make([]zsetEl, 0, n)
 	els := make([]*list.Element, 0, n)
 	el := z.usageL.Back()
 	for {
-		if len(addrs) >= n || el == nil {
+		if len(zEls) >= n || el == nil {
 			break
 		}
 
 		zEl := el.Value.(zsetEl)
 		if zEl.t.After(expire) {
-			addrs = append(addrs, zEl.addr)
+			zEls = append(zEls, zEl)
 			els = append(els, el)
 		}
 
@@ -73,7 +76,7 @@ func (z *zset) get(n int, expire time.Time) []net.Addr {
 		z.usageL.MoveToFront(el)
 	}
 
-	return addrs
+	return zEls
 }
 
 // expire removes all addrs which were added prior to the given time

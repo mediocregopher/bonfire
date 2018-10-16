@@ -12,7 +12,11 @@ import (
 
 // MaxMessageSize is the maximum number of bytes a Message could possibly be
 // when marshaled.
-const MaxMessageSize = 85
+const MaxMessageSize = 21 + (FingerprintSize * 2)
+
+// MinMessageSize is the minimum number of bytes a Message could possibly be
+// when marshaled.
+const MinMessageSize = 2 + FingerprintSize
 
 // FingerprintSize is the length of the Fingerprint field in a Message.
 const FingerprintSize = 64
@@ -71,7 +75,8 @@ func splitHostPort(addr string) ([]byte, uint16, error) {
 
 // MeetBody describes further fields which are used for Meet messages.
 type MeetBody struct {
-	Addr net.Addr
+	Fingerprint []byte
+	Addr        net.Addr
 }
 
 // HelloPeerBody describes further fields which are used for HelloPeer messages.
@@ -115,6 +120,7 @@ func (m Message) MarshalBinary() ([]byte, error) {
 	if m.Type == HelloPeer {
 		err = marshalAddr(m.HelloPeerBody.Addr)
 	} else if m.Type == Meet {
+		b = append(b, m.MeetBody.Fingerprint[:FingerprintSize]...)
 		err = marshalAddr(m.MeetBody.Addr)
 	}
 
@@ -129,11 +135,10 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 
 	var err error
 	read := func(n int) []byte {
-		if len(b) < n {
-			err = errors.New("malformed message: too short")
-		}
 		if err != nil {
 			return nil
+		} else if len(b) < n {
+			err = errors.New("malformed message: too short")
 		}
 
 		out := b[:n]
@@ -155,6 +160,7 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		return errors.New("malformed message: invalid type")
 	}
 
+	// will do nothing if err is non-nil
 	unmarshalAddr := func() (addr net.Addr) {
 		if proto := read(1); err != nil {
 			return
@@ -181,6 +187,7 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		m.HelloPeerBody.Addr = unmarshalAddr()
 
 	} else if m.Type == Meet {
+		m.MeetBody.Fingerprint = read(FingerprintSize)
 		m.MeetBody.Addr = unmarshalAddr()
 	}
 
