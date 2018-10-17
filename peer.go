@@ -19,6 +19,9 @@ type PeerOpts struct {
 	// The time NewPeer will wait for HelloPeer messages from other peers before
 	// attempting to communicate with a potential NAT gateway to open an
 	// external port. Default is 1 * time.Second.
+	//
+	// If -1, this timeout is ignored and NAT gateway port forwarding is never
+	// attempted.
 	InitTimeoutUntilGateway time.Duration
 
 	// The interval on which ReadyToMingle messages are sent. If -1, no
@@ -80,6 +83,8 @@ type Peer struct {
 	closed          bool
 }
 
+var errNoHelloPeer = errors.New("no messages from peers or server received")
+
 // NewPeer intializes a *Peer instance and communicates with the server at the
 // given address to discover other peers. The only supported value for network
 // right now is "udp".
@@ -99,6 +104,8 @@ type Peer struct {
 func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*Peer, error) {
 	if network != "udp" {
 		panic("only network 'udp' is supported by NewPeer")
+	} else if opts == nil {
+		opts = new(PeerOpts)
 	}
 
 	var err error
@@ -108,7 +115,7 @@ func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*
 		serverAddrStr: serverAddr,
 	}
 
-	peer.PacketConn, err = net.ListenPacket(peer.network, ":0")
+	peer.PacketConn, err = net.ListenPacket(peer.network, peer.po.ListenAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -117,33 +124,39 @@ func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*
 		peer.mingleTicker = time.NewTicker(peer.po.ReadyToMingleInterval)
 	}
 
-	if err := peer.resetPeers(); err != nil {
+	innerCtx := ctx
+	if peer.po.InitTimeoutUntilGateway > 0 {
+		var cancel func()
+		innerCtx, cancel = context.WithTimeout(ctx, peer.po.InitTimeoutUntilGateway)
+		defer cancel()
+	}
+
+	err = peer.meetPeer(innerCtx)
+	if peer.po.InitTimeoutUntilGateway > 0 && err == errNoHelloPeer {
+		// TODO gateway stuff
+
+		err = peer.meetPeer(ctx)
+	}
+	if err != nil {
 		peer.Close()
 		return nil, err
 	}
 
-	innerCtx, cancel := context.WithTimeout(ctx, peer.po.InitTimeoutUntilGateway)
-	defer cancel()
-
-	err = peer.waitForPeer(innerCtx)
-	if err == nil {
-		return peer, nil
-	} else if err != nil && (ctx.Err() != nil || err != context.Canceled) {
-		peer.Close()
-		return nil, err
-	}
-
-	// TODO gateway stuff
-
-	if err := peer.resetPeers(); err != nil {
-		peer.Close()
-		return nil, err
-	} else if err := peer.waitForPeer(ctx); err != nil {
-		peer.Close()
-		return nil, err
-	}
-
+	// If readyToMingle errors at this point it's because it couldn't resolve
+	// the server or sending failed. The server is known to be resolvable
+	// already, and we know we can send on our connection too. So assume the
+	// problem is temporary and continue on.
+	peer.readyToMingle()
 	return peer, nil
+}
+
+func (p *Peer) meetPeer(ctx context.Context) error {
+	if err := p.resetPeers(); err != nil {
+		return err
+	} else if err = p.waitForPeer(ctx); err == context.DeadlineExceeded {
+		return errNoHelloPeer
+	}
+	return nil
 }
 
 // PeerAddrs returns the addresses of all currently known peers of this Peer.
@@ -255,6 +268,18 @@ func (p *Peer) waitForPeer(ctx context.Context) error {
 	}
 }
 
+func (p *Peer) readyToMingle() error {
+	serverAddr, err := p.serverAddr()
+	if err != nil {
+		return err
+	}
+
+	return multiSend(serverAddr, p.PacketConn, p.po.PacketBlastCount, Message{
+		Fingerprint: p.lastFingerprint,
+		Type:        ReadyToMingle,
+	})
+}
+
 func (p *Peer) maybeMingle() bool {
 	select {
 	case <-p.mingleTicker.C:
@@ -262,15 +287,9 @@ func (p *Peer) maybeMingle() bool {
 		return false
 	}
 
-	serverAddr, err := p.serverAddr()
-	if err != nil {
-		return true
-	}
-
-	multiSend(serverAddr, p.PacketConn, p.po.PacketBlastCount, Message{
-		Fingerprint: p.lastFingerprint,
-		Type:        ReadyToMingle,
-	})
+	// maybeMingle only really cares that readyToMingle was called or not, not
+	// whether or not it sent successfully
+	p.readyToMingle()
 	return true
 }
 
@@ -326,7 +345,7 @@ func (p *Peer) processMessage(addr net.Addr, msg Message) error {
 			Fingerprint: msg.MeetBody.Fingerprint,
 			Type:        HelloPeer,
 			HelloPeerBody: HelloPeerBody{
-				Addr: addr,
+				Addr: msg.MeetBody.Addr,
 			},
 		})
 	case HelloPeer:
