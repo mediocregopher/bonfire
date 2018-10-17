@@ -6,8 +6,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"net"
+	"strconv"
 	"sync"
 	"time"
+
+	nat "github.com/mediocregopher/go-nat"
 )
 
 // PeerOpts are passed to the NewPeer function to affect the Peer's behavior.
@@ -23,6 +26,12 @@ type PeerOpts struct {
 	// If -1, this timeout is ignored and NAT gateway port forwarding is never
 	// attempted.
 	InitTimeoutUntilGateway time.Duration
+
+	// When a port mapping is created on a NAT gateway for this peer, this
+	// timeout will be used as the expiration for that mapping on the gateway
+	// and to determine how often to refresh that mapping (so it doesn't expire
+	// while the peer is active). Default is 1 * time.Minute.
+	GatewayPortMapTimeout time.Duration
 
 	// The interval on which ReadyToMingle messages are sent. If -1, no
 	// ReadyToMingle messages will be sent. Default is 1 * time.Minute.
@@ -49,6 +58,9 @@ func (po PeerOpts) withDefaults() PeerOpts {
 	if po.InitTimeoutUntilGateway == 0 {
 		po.InitTimeoutUntilGateway = 1 * time.Second
 	}
+	if po.GatewayPortMapTimeout == 0 {
+		po.GatewayPortMapTimeout = 1 * time.Minute
+	}
 	if po.ReadyToMingleInterval == 0 {
 		po.ReadyToMingleInterval = 1 * time.Minute
 	}
@@ -65,7 +77,13 @@ func (po PeerOpts) withDefaults() PeerOpts {
 // server and multiplex bonfire and application packets over a single UDP
 // port.
 //
-// No fields on Peer should be modified, all methods are thread-safe.
+// Until Close is called the Peer will hold open the socket it creates to talk
+// with the server, and accepts packets from peers over that socket as well (see
+// ReadFrom method).
+//
+// Until Close is called the Peer will periodically send ReadyToMingle
+// messages (unless the interval is 0 in PeerOpts) to the server so that it
+// can help new peers discover itself.
 type Peer struct {
 	// Peer wraps a PacketConn, overwriting some of its methods and exposing the
 	// rest.
@@ -73,9 +91,12 @@ type Peer struct {
 
 	po                     PeerOpts
 	network, serverAddrStr string
+	gw                     nat.NAT
+
+	wg      *sync.WaitGroup
+	closeCh chan bool
 
 	l               sync.RWMutex
-	mingleTicker    *time.Ticker
 	lastServerAddr  net.Addr
 	lastFingerprint []byte
 	remoteAddr      net.Addr
@@ -89,15 +110,7 @@ var errNoHelloPeer = errors.New("no messages from peers or server received")
 // given address to discover other peers. The only supported value for network
 // right now is "udp".
 //
-// Until Close is called the Client will hold open the socket it creates to talk
-// with the server, and accepts packets from peers over that socket as well (see
-// ReadFrom method).
-//
-// Until Close is called the Client will periodically send ReadyToMingle
-// messages (unless the interval is 0 in ClientOpts) to the server so that it
-// can help new peers discover itself.
-//
-// If ClientOpts is nil all default values will be used.
+// If PeerOpts is nil all default values will be used.
 //
 // Canceling the context after this function has returned successfully has no
 // effect.
@@ -113,15 +126,13 @@ func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*
 		po:            (*opts).withDefaults(),
 		network:       network,
 		serverAddrStr: serverAddr,
+		wg:            new(sync.WaitGroup),
+		closeCh:       make(chan bool),
 	}
 
 	peer.PacketConn, err = net.ListenPacket(peer.network, peer.po.ListenAddr)
 	if err != nil {
 		return nil, err
-	}
-
-	if peer.po.ReadyToMingleInterval > 0 {
-		peer.mingleTicker = time.NewTicker(peer.po.ReadyToMingleInterval)
 	}
 
 	innerCtx := ctx
@@ -134,6 +145,13 @@ func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*
 	err = peer.meetPeer(innerCtx)
 	if peer.po.InitTimeoutUntilGateway > 0 && err == errNoHelloPeer {
 		// TODO gateway stuff
+		if peer.gw, err = nat.DiscoverGateway(ctx); err != nil {
+			peer.Close()
+			return nil, err
+		} else if err := peer.natForward(); err != nil {
+			peer.Close()
+			return nil, err
+		}
 
 		err = peer.meetPeer(ctx)
 	}
@@ -142,11 +160,21 @@ func NewPeer(ctx context.Context, network, serverAddr string, opts *PeerOpts) (*
 		return nil, err
 	}
 
-	// If readyToMingle errors at this point it's because it couldn't resolve
-	// the server or sending failed. The server is known to be resolvable
-	// already, and we know we can send on our connection too. So assume the
-	// problem is temporary and continue on.
-	peer.readyToMingle()
+	if peer.po.ReadyToMingleInterval > 0 {
+		// If readyToMingle errors at this point it's because it couldn't
+		// resolve the server or sending failed. The server is known to be
+		// resolvable already, and we know we can send on our connection too. So
+		// assume the problem is temporary and continue on.
+		peer.readyToMingle()
+		peer.wg.Add(1)
+		go peer.spinReadyToMingle()
+	}
+
+	if peer.gw != nil {
+		peer.wg.Add(1)
+		go peer.spinNATForward()
+	}
+
 	return peer, nil
 }
 
@@ -157,6 +185,76 @@ func (p *Peer) meetPeer(ctx context.Context) error {
 		return errNoHelloPeer
 	}
 	return nil
+}
+
+func (p *Peer) readyToMingle() error {
+	p.l.Lock()
+	serverAddr, err := p.serverAddr()
+	if err != nil {
+		p.l.Unlock()
+		return err
+	}
+	p.l.Unlock()
+
+	return multiSend(serverAddr, p.PacketConn, p.po.PacketBlastCount, Message{
+		Fingerprint: p.lastFingerprint,
+		Type:        ReadyToMingle,
+	})
+}
+
+func (p *Peer) spinReadyToMingle() {
+	defer p.wg.Done()
+	t := time.NewTicker(p.po.ReadyToMingleInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			p.readyToMingle()
+		case <-p.closeCh:
+			return
+		}
+	}
+}
+
+func (p *Peer) localPort() int {
+	// we panic in here because there's really no reason these shouldn't work
+	addrStr := p.PacketConn.LocalAddr().String()
+	_, portStr, err := net.SplitHostPort(addrStr)
+	if err != nil {
+		panic(err)
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		panic(err)
+	}
+	return port
+}
+
+func (p *Peer) natForward() error {
+	_, err := p.gw.AddPortMapping(
+		p.PacketConn.LocalAddr().Network(),
+		p.localPort(),
+		"port forwarding for bonfire peer",
+		p.po.GatewayPortMapTimeout,
+	)
+	return err
+}
+
+func (p *Peer) spinNATForward() {
+	defer p.wg.Done()
+	t := time.NewTicker(p.po.GatewayPortMapTimeout / 4)
+	defer t.Stop()
+	proto := p.PacketConn.LocalAddr().Network()
+	for {
+		select {
+		case <-t.C:
+			p.natForward()
+		case <-p.closeCh:
+			p.gw.DeletePortMapping(proto, p.localPort())
+			return
+		}
+	}
 }
 
 // PeerAddrs returns the addresses of all currently known peers of this Peer.
@@ -268,31 +366,6 @@ func (p *Peer) waitForPeer(ctx context.Context) error {
 	}
 }
 
-func (p *Peer) readyToMingle() error {
-	serverAddr, err := p.serverAddr()
-	if err != nil {
-		return err
-	}
-
-	return multiSend(serverAddr, p.PacketConn, p.po.PacketBlastCount, Message{
-		Fingerprint: p.lastFingerprint,
-		Type:        ReadyToMingle,
-	})
-}
-
-func (p *Peer) maybeMingle() bool {
-	select {
-	case <-p.mingleTicker.C:
-	default:
-		return false
-	}
-
-	// maybeMingle only really cares that readyToMingle was called or not, not
-	// whether or not it sent successfully
-	p.readyToMingle()
-	return true
-}
-
 // ReadFrom implements the method for the net.PacketConn interface. It will
 // process all incoming packets, implicitly handling any bonfire packets and
 // passing on others to the caller.
@@ -304,15 +377,6 @@ func (p *Peer) ReadFrom(b []byte) (int, net.Addr, error) {
 	}
 
 	for {
-		if p.po.ReadyToMingleInterval > 0 {
-			p.l.Lock()
-			ok := p.maybeMingle()
-			p.l.Unlock()
-			if ok {
-				continue
-			}
-		}
-
 		n, addr, err := p.PacketConn.ReadFrom(b)
 		if err != nil || n > MaxMessageSize || n < MinMessageSize || b[0] != 0 {
 			return n, addr, err
@@ -379,9 +443,8 @@ func (p *Peer) Close() error {
 	} else if err := p.PacketConn.Close(); err != nil {
 		return err
 	}
-	if p.mingleTicker != nil {
-		p.mingleTicker.Stop()
-	}
+	close(p.closeCh)
+	p.wg.Wait()
 	p.closed = true
 	return nil
 }
