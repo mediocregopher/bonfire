@@ -66,10 +66,19 @@ func (s *Server) Listen(ctx context.Context, network, addr string) error {
 		panic("only network 'udp' is supported by Listen")
 	}
 
-	var err error
-	if s.conn, err = net.ListenPacket(network, addr); err != nil {
+	conn, err := net.ListenPacket(network, addr)
+	if err != nil {
 		return err
 	}
+
+	return s.Serve(ctx, conn)
+}
+
+// Serve blocks while the Server listens for and handles communicating with
+// peers accepted from the given PacketConn. It will return context.Canceled if
+// the context is canceled.
+func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
+	s.conn = conn
 
 	wg := new(sync.WaitGroup)
 	defer wg.Wait()
