@@ -65,6 +65,9 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 	return ctx, &peer
 }
 
+// TODO i think it's necessary to make sure that peer doesn't add its own
+// remoteAddr to the peers list, though in testing this bug doesn't seem to
+// occur?
 func (peer *peer) setPeers(addrs ...string) {
 	peer.peersL.Lock()
 	defer peer.peersL.Unlock()
