@@ -32,7 +32,7 @@ const (
 // Msg describes the structure of a message which is gossiped around the
 // network.
 type Msg struct {
-	MsgType
+	MsgType MsgType `db:"state"`
 
 	// These two values form a uniqueness key. In other words, a peer can only
 	// have one state ("has", "needs", etc...) per resource.
@@ -57,12 +57,17 @@ func (app *app) run(ctx context.Context) error {
 	for {
 		select {
 		case msg := <-app.peer.msgCh:
-			mlog.Info("got message", mctx.Annotate(ctx,
+			ctx := mctx.Annotate(ctx,
 				"addr", msg.Addr,
 				"resource", msg.Resource,
-			))
+			)
+			mlog.Info("got message", ctx)
+			if err := app.db.incomingMsg(msg); err != nil {
+				mlog.Warn("error processing msg", ctx, merr.Context(err))
+			}
 		case <-ticker.C:
 			msg := Msg{
+				MsgType:  MsgType(mrand.Intn(2)),
 				Addr:     thisAddr,
 				Resource: mrand.Hex(4),
 				Nonce:    uint64(time.Now().UnixNano()),
