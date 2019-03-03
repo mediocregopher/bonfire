@@ -2,6 +2,8 @@ module main
 
 require (
 	github.com/golang/protobuf v1.3.0 // indirect
+	github.com/jmoiron/sqlx v1.2.0
+	github.com/mattn/go-sqlite3 v1.9.0
 	github.com/mediocregopher/bonfire v0.0.0
 	github.com/mediocregopher/mediocre-go-lib v0.0.0-20190301193741-015edcd69a3d
 	github.com/vmihailenco/msgpack v4.0.2+incompatible

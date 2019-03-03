@@ -12,7 +12,6 @@ import (
 	"context"
 	"time"
 
-	//_ "github.com/mattn/go-sqlite3"
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
@@ -45,40 +44,53 @@ type Msg struct {
 	Nonce uint64
 }
 
-func main() {
-	ctx := m.ServiceContext()
-	ctx, peer := withPeer(ctx)
+type app struct {
+	peer *peer
+	db   *db
+}
 
+func (app *app) run(ctx context.Context) error {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	thisAddr := app.peer.RemoteAddr().String()
+	for {
+		select {
+		case msg := <-app.peer.msgCh:
+			mlog.Info("got message", mctx.Annotate(ctx,
+				"addr", msg.Addr,
+				"resource", msg.Resource,
+			))
+		case <-ticker.C:
+			msg := Msg{
+				Addr:     thisAddr,
+				Resource: mrand.Hex(4),
+				Nonce:    uint64(time.Now().UnixNano()),
+			}
+			mlog.Info("spraying message", mctx.Annotate(ctx,
+				"addr", msg.Addr,
+				"resource", msg.Resource,
+			))
+			if err := app.peer.Spray(msg); err != nil {
+				mlog.Warn("error spraying msg", ctx, merr.Context(err))
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func main() {
+	var app app
+	ctx := m.ServiceContext()
+	ctx, app.peer = withPeer(ctx)
+	ctx, app.db = withDB(ctx)
+
+	// set up app runtime
 	threadCtx, threadCancel := context.WithCancel(ctx)
 	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
-		thisAddr := peer.RemoteAddr().String()
 		threadCtx = mrun.WithThreads(threadCtx, 1, func() error {
-			ticker := time.NewTicker(2 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case msg := <-peer.msgCh:
-					mlog.Info("got message", mctx.Annotate(threadCtx,
-						"addr", msg.Addr,
-						"resource", msg.Resource,
-					))
-				case <-ticker.C:
-					msg := Msg{
-						Addr:     thisAddr,
-						Resource: mrand.Hex(4),
-						Nonce:    uint64(time.Now().UnixNano()),
-					}
-					mlog.Info("spraying message", mctx.Annotate(threadCtx,
-						"addr", msg.Addr,
-						"resource", msg.Resource,
-					))
-					if err := peer.Spray(msg); err != nil {
-						mlog.Warn("error spraying msg", threadCtx, merr.Context(err))
-					}
-				case <-threadCtx.Done():
-					return nil
-				}
-			}
+			return app.run(threadCtx)
 		})
 		return nil
 	})
@@ -87,12 +99,6 @@ func main() {
 		threadCancel()
 		return mrun.Wait(threadCtx, innerCtx.Done())
 	})
-
-	//mlog.Info("creating sqlite db", ctx)
-	//db, err := sqlx.Connect("sqlite", ":memory:")
-	//if err != nil {
-	//	mlog.Fatal("failed to initialize sqlite", ctx, merr.Context(err))
-	//}
 
 	m.StartWaitStop(ctx)
 }
