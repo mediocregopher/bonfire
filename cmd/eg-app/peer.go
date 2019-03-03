@@ -46,6 +46,10 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 			return merr.Wrap(err, peer.ctx, innerCtx)
 		}
 
+		peer.ctx = mctx.Annotate(peer.ctx,
+			"remote-addr", peer.Peer.RemoteAddr().String())
+		mlog.Info("peering completed", peer.ctx)
+
 		peer.setBonfirePeers()
 
 		peer.ctx = mrun.WithThreads(peer.ctx, 1, func() error {
@@ -67,13 +71,14 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 	return mctx.WithChild(ctx, peer.ctx), &peer
 }
 
-// TODO i think it's necessary to make sure that peer doesn't add its own
-// remoteAddr to the peers list, though in testing this bug doesn't seem to
-// occur?
 func (peer *peer) setPeers(addrs ...string) {
+	remoteAddr := peer.Peer.RemoteAddr().String()
 	peer.peersL.Lock()
 	defer peer.peersL.Unlock()
 	for _, addr := range addrs {
+		if addr == remoteAddr {
+			continue
+		}
 		peer.peers[addr] = struct{}{}
 	}
 }
