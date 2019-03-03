@@ -5,28 +5,32 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
 type db struct {
+	ctx context.Context
 	*sqlx.DB
 }
 
 func withDB(ctx context.Context) (context.Context, *db) {
-	var db db
+	db := db{
+		ctx: mctx.NewChild(ctx, "db"),
+	}
 
-	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
-		mlog.Info("creating sqlite db", ctx)
+	db.ctx = mrun.WithStartHook(db.ctx, func(context.Context) error {
+		mlog.Info("creating sqlite db", db.ctx)
 		var err error
 		db.DB, err = sqlx.Connect("sqlite3", ":memory:")
-		return merr.Wrap(err, ctx)
+		return merr.Wrap(err, db.ctx)
 	})
 
-	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
+	db.ctx = mrun.WithStopHook(db.ctx, func(context.Context) error {
 		return db.DB.Close()
 	})
 
-	return ctx, &db
+	return mctx.WithChild(ctx, db.ctx), &db
 }

@@ -5,7 +5,7 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/mattn/go-sqlite3 v1.9.0
 	github.com/mediocregopher/bonfire v0.0.0
-	github.com/mediocregopher/mediocre-go-lib v0.0.0-20190301193741-015edcd69a3d
+	github.com/mediocregopher/mediocre-go-lib v0.0.0-20190303203549-2343bda42a0c
 	github.com/vmihailenco/msgpack v4.0.2+incompatible
 	golang.org/x/net v0.0.0-20190301231341-16b79f2e4e95 // indirect
 	golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 // indirect

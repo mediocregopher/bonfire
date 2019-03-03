@@ -27,16 +27,18 @@ type peer struct {
 }
 
 func withPeer(ctx context.Context) (context.Context, *peer) {
-	ctx, serverAddr := mcfg.WithString(ctx, "bonfire-server-addr", "127.0.0.1:7890", "Address of a bonfire server which can be used to find other peers")
-
 	peer := peer{
+		ctx:    mctx.NewChild(ctx, "peer"),
 		peers:  map[string]struct{}{},
 		msgCh:  make(chan Msg, 128),
 		stopCh: make(chan struct{}),
 	}
 
-	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
-		peer.ctx = mctx.Annotate(ctx, "bonfire-server-addr", *serverAddr)
+	var serverAddr *string
+	peer.ctx, serverAddr = mcfg.WithString(peer.ctx, "server-addr", "127.0.0.1:7890", "Address of a bonfire server which can be used to find other peers")
+
+	peer.ctx = mrun.WithStartHook(peer.ctx, func(innerCtx context.Context) error {
+		peer.ctx = mctx.Annotate(peer.ctx, "server-addr", *serverAddr)
 		mlog.Info("peering with bonfire server", peer.ctx, innerCtx)
 		var err error
 		peer.Peer, err = bonfire.NewPeer(innerCtx, "udp", *serverAddr, nil)
@@ -55,14 +57,14 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 		return nil
 	})
 
-	ctx = mrun.WithStopHook(ctx, func(innerCtx context.Context) error {
+	peer.ctx = mrun.WithStopHook(peer.ctx, func(innerCtx context.Context) error {
 		close(peer.stopCh)
 		mrun.Wait(peer.ctx, innerCtx.Done())
 		close(peer.msgCh)
 		return peer.Close()
 	})
 
-	return ctx, &peer
+	return mctx.WithChild(ctx, peer.ctx), &peer
 }
 
 // TODO i think it's necessary to make sure that peer doesn't add its own
