@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/mediocregopher/bonfire"
@@ -15,22 +14,24 @@ import (
 	"github.com/vmihailenco/msgpack"
 )
 
+type msgEvent struct {
+	Msg
+	PeerAddr string
+	TS       time.Time
+}
+
 type peer struct {
 	ctx context.Context
 	*bonfire.Peer
 
-	peersL sync.Mutex
-	peers  map[string]struct{}
-
-	msgCh  chan Msg
+	msgCh  chan msgEvent
 	stopCh chan struct{}
 }
 
 func withPeer(ctx context.Context) (context.Context, *peer) {
 	peer := peer{
 		ctx:    mctx.NewChild(ctx, "peer"),
-		peers:  map[string]struct{}{},
-		msgCh:  make(chan Msg, 128),
+		msgCh:  make(chan msgEvent, 128),
 		stopCh: make(chan struct{}),
 	}
 
@@ -49,8 +50,6 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 		peer.ctx = mctx.Annotate(peer.ctx,
 			"remote-addr", peer.Peer.RemoteAddr().String())
 		mlog.Info("peering completed", peer.ctx)
-
-		peer.setBonfirePeers()
 
 		peer.ctx = mrun.WithThreads(peer.ctx, 1, func() error {
 			if err := peer.spin(); err != nil {
@@ -71,38 +70,12 @@ func withPeer(ctx context.Context) (context.Context, *peer) {
 	return mctx.WithChild(ctx, peer.ctx), &peer
 }
 
-func (peer *peer) setPeers(addrs ...string) {
-	remoteAddr := peer.Peer.RemoteAddr().String()
-	peer.peersL.Lock()
-	defer peer.peersL.Unlock()
-	for _, addr := range addrs {
-		if addr == remoteAddr {
-			continue
-		}
-		peer.peers[addr] = struct{}{}
-	}
-}
-
-func (peer *peer) setBonfirePeers() {
-	peerAddrs := peer.PeerAddrs()
-	addrs := make([]string, len(peerAddrs))
-	for i := range peerAddrs {
-		addrs[i] = peerAddrs[i].String()
-	}
-	peer.setPeers(addrs...)
-}
-
 func (peer *peer) spin() error {
-	setBonfirePeersTicker := time.NewTicker(5 * time.Second)
-	defer setBonfirePeersTicker.Stop()
-
 	b := make([]byte, 512)
 	for {
 		select {
 		case <-peer.stopCh:
 			return nil
-		case <-setBonfirePeersTicker.C:
-			peer.setBonfirePeers()
 		default:
 		}
 
@@ -113,6 +86,8 @@ func (peer *peer) spin() error {
 		} else if err != nil {
 			return merr.Wrap(err, peer.ctx)
 		}
+
+		now := time.Now()
 
 		var msg Msg
 		if err := msgpack.Unmarshal(b[:n], &msg); err != nil {
@@ -127,29 +102,22 @@ func (peer *peer) spin() error {
 			continue
 		}
 
-		peer.setPeers(peerAddr.String(), msg.Addr)
-		peer.msgCh <- msg
+		peer.msgCh <- msgEvent{
+			Msg:      msg,
+			PeerAddr: peerAddr.String(),
+			TS:       now,
+		}
 	}
 }
 
-// Spray sends the given Msg to a random slice of the known set of peers.
-func (peer *peer) Spray(msg Msg) error {
+// Send sends the given Msg to the given addrs
+func (peer *peer) Send(msg Msg, dstAddrs ...string) error {
 	b, err := msgpack.Marshal(msg)
 	if err != nil {
 		return merr.Wrap(err, peer.ctx)
 	}
 
-	addrs := make([]string, 0, 5)
-	peer.peersL.Lock()
-	for addr := range peer.peers {
-		addrs = append(addrs, addr)
-		if len(addrs) == cap(addrs) {
-			break
-		}
-	}
-	peer.peersL.Unlock()
-
-	for _, addr := range addrs {
+	for _, addr := range dstAddrs {
 		udpAddr, err := net.ResolveUDPAddr("udp", addr)
 		if err != nil {
 			return merr.Wrap(err, mctx.Annotate(peer.ctx, "addr", addr))

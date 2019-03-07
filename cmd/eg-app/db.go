@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
@@ -9,6 +10,7 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
+	"github.com/mediocregopher/mediocre-go-lib/mtime"
 )
 
 type db struct {
@@ -45,13 +47,14 @@ func (db *db) init() error {
 			resource TEXT,
 			state INTEGER,
 			nonce INTEGER,
+			lastTS REAL,
 			PRIMARY KEY(addr, resource)
 		);
 	`)
 	return merr.Wrap(err, db.ctx)
 }
 
-func (db *db) incomingMsg(msg Msg) error {
+func (db *db) incomingMsg(msg msgEvent) error {
 	_, err := db.Exec(
 		`INSERT OR REPLACE INTO peer_resources
 			SELECT newdata.* FROM
@@ -59,12 +62,25 @@ func (db *db) incomingMsg(msg Msg) error {
 					? AS addr,
 					? AS resource,
 					? AS state,
-					? AS nonce) AS newdata
+					? AS nonce,
+					? AS lastTS) AS newdata
     		LEFT JOIN peer_resources as olddata
 				ON newdata.addr=olddata.addr
 				AND newdata.resource=olddata.resource
     			WHERE newdata.nonce>olddata.nonce
 				OR olddata.addr IS NULL;
-	`, msg.Addr, msg.Resource, msg.MsgType, msg.Nonce)
+	`, msg.Addr, msg.Resource, msg.MsgType, msg.Nonce,
+		mtime.NewTS(msg.TS).Float64())
 	return merr.Wrap(err, db.ctx)
+}
+
+// peers returns the addresses of all peers from which a message was received
+// since the given time.
+func (db *db) peers(since time.Time) ([]string, error) {
+	var addrs []string
+	err := db.Select(&addrs, `
+		SELECT DISTINCT addr FROM peer_resources
+		WHERE lastTS >= ?
+	`, mtime.NewTS(since).Float64())
+	return addrs, merr.Wrap(err, db.ctx)
 }

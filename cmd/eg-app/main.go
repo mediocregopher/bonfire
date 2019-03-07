@@ -49,6 +49,39 @@ type app struct {
 	db   *db
 }
 
+func (app *app) allPeers() (map[string]struct{}, error) {
+	m := make(map[string]struct{})
+	for _, addr := range app.peer.PeerAddrs() {
+		m[addr.String()] = struct{}{}
+	}
+
+	dbPeerAddrs, err := app.db.peers(time.Now().Add(-5 * time.Minute))
+	if err != nil {
+		return m, err
+	}
+	for _, addr := range dbPeerAddrs {
+		m[addr] = struct{}{}
+	}
+	return m, nil
+}
+
+func (app *app) spray(msg Msg) error {
+	addrsM, err := app.allPeers()
+	if err != nil {
+		return err
+	}
+
+	addrs := make([]string, 0, (len(addrsM)/2)+1)
+	for addr := range addrsM {
+		if len(addrs) == cap(addrs) {
+			break
+		}
+		addrs = append(addrs, addr)
+	}
+
+	return app.peer.Send(msg, addrs...)
+}
+
 func (app *app) run(ctx context.Context) error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -76,7 +109,7 @@ func (app *app) run(ctx context.Context) error {
 				"addr", msg.Addr,
 				"resource", msg.Resource,
 			))
-			if err := app.peer.Spray(msg); err != nil {
+			if err := app.spray(msg); err != nil {
 				mlog.Warn("error spraying msg", ctx, merr.Context(err))
 			}
 		case <-ctx.Done():
