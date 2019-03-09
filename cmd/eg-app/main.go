@@ -95,7 +95,7 @@ func (app *app) run(ctx context.Context) error {
 				"resource", msg.Resource,
 			)
 			mlog.Info("got message", ctx)
-			if err := app.db.incomingMsg(msg); err != nil {
+			if err := app.db.recordMsg(msg); err != nil {
 				mlog.Warn("error processing msg", ctx, merr.Context(err))
 			}
 		case <-ticker.C:

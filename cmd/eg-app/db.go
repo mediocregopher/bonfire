@@ -54,7 +54,7 @@ func (db *db) init() error {
 	return merr.Wrap(err, db.ctx)
 }
 
-func (db *db) incomingMsg(msg msgEvent) error {
+func (db *db) recordMsg(msg msgEvent) error {
 	_, err := db.Exec(
 		`INSERT OR REPLACE INTO peer_resources
 			SELECT newdata.* FROM
@@ -76,11 +76,24 @@ func (db *db) incomingMsg(msg msgEvent) error {
 
 // peers returns the addresses of all peers from which a message was received
 // since the given time.
+//
+// TODO index on lastTS
 func (db *db) peers(since time.Time) ([]string, error) {
 	var addrs []string
 	err := db.Select(&addrs, `
 		SELECT DISTINCT addr FROM peer_resources
 		WHERE lastTS >= ?
 	`, mtime.NewTS(since).Float64())
+	return addrs, merr.Wrap(err, db.ctx)
+}
+
+func (db *db) peersWith(resource string, since time.Time) ([]string, error) {
+	var addrs []string
+	err := db.Select(&addrs, `
+		SELECT DISTINCT addr FROM peer_resources
+		WHERE resource = ?
+		AND state = 0
+		AND lastTS >= ?
+	`, resource, mtime.NewTS(since).Float64())
 	return addrs, merr.Wrap(err, db.ctx)
 }
