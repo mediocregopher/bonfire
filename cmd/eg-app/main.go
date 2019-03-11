@@ -108,6 +108,17 @@ func (app *app) run(ctx context.Context) error {
 				if peerAddrs, err = app.db.peersWith(msg.Resource, since); err != nil {
 					break
 				}
+
+				// if the msg was sent on behalf of a different peer, send the
+				// responses to both the sender and the original requester, so
+				// the sender can have it stored for themselves if they or
+				// someone else needs to know
+				dstAddrs := make([]string, 0, 2)
+				dstAddrs = append(dstAddrs, msg.Addr)
+				if msg.Addr != msg.PeerAddr {
+					dstAddrs = append(dstAddrs, msg.PeerAddr)
+				}
+
 				for _, peerAddr := range peerAddrs {
 					resMsg := Msg{
 						MsgType:  MsgTypeHave,
@@ -117,7 +128,7 @@ func (app *app) run(ctx context.Context) error {
 						// this particular peer/resource
 						Nonce: uint64(time.Now().UnixNano()),
 					}
-					if err = app.peer.Send(resMsg, msg.PeerAddr); err != nil {
+					if err = app.peer.Send(resMsg, dstAddrs...); err != nil {
 						break
 					}
 				}
