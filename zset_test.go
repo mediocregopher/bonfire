@@ -43,8 +43,8 @@ func TestZSet(t *T) {
 		return massert.AnyOne(
 			massert.Equal(zEls, expZEls),
 			massert.All(
-				massert.Len(expZEls, 0),
-				massert.Len(zEls, 0),
+				massert.Length(expZEls, 0),
+				massert.Length(zEls, 0),
 			),
 		)
 	}
@@ -74,29 +74,29 @@ func TestZSet(t *T) {
 		z := newZSet()
 		aa = append(aa, assertEls(z.timeL))
 		aa = append(aa, assertEls(z.usageL))
-		aa = append(aa, massert.Len(z.m, 0))
+		aa = append(aa, massert.Length(z.m, 0))
 
 		z.add(addrString(a), fa)
 		aa = append(aa, assertEls(z.timeL, za))
 		aa = append(aa, assertEls(z.usageL, za))
-		aa = append(aa, massert.Len(z.m, 1))
+		aa = append(aa, massert.Length(z.m, 1))
 
 		z.add(addrString(b), fb)
 		aa = append(aa, assertEls(z.timeL, za, zb))
 		aa = append(aa, assertEls(z.usageL, za, zb))
-		aa = append(aa, massert.Len(z.m, 2))
+		aa = append(aa, massert.Length(z.m, 2))
 
 		z.add(addrString(a), fc)
 		aa = append(aa, assertEls(z.timeL, zb, zEl{a, fc}))
 		aa = append(aa, assertEls(z.usageL, zEl{a, fc}, zb))
-		aa = append(aa, massert.Len(z.m, 2))
+		aa = append(aa, massert.Length(z.m, 2))
 
 		z.add(addrString(c), fc)
 		aa = append(aa, assertEls(z.timeL, zb, zEl{a, fc}, zc))
 		aa = append(aa, assertEls(z.usageL, zEl{a, fc}, zb, zc))
-		aa = append(aa, massert.Len(z.m, 3))
+		aa = append(aa, massert.Length(z.m, 3))
 
-		massert.Fatal(t, massert.All(aa...))
+		massert.Require(t, aa...)
 	})
 
 	t.Run("get", func(t *T) {
@@ -104,7 +104,7 @@ func TestZSet(t *T) {
 		z := newZSet()
 
 		out := z.get(2, time.Time{})
-		aa = append(aa, massert.Len(out, 0))
+		aa = append(aa, massert.Length(out, 0))
 
 		z.add(addrString(a), fa)
 		z.add(addrString(b), fb)
@@ -113,31 +113,31 @@ func TestZSet(t *T) {
 		z.add(addrString(e), fe)
 		aa = append(aa, assertEls(z.timeL, za, zb, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, za, zb, zc, zd, ze))
-		aa = append(aa, massert.Len(z.m, 5))
+		aa = append(aa, massert.Length(z.m, 5))
 
 		addrStrs := elsToAddrs(z.get(2, time.Time{}))
 		aa = append(aa, massert.Equal(addrStrs, []string{e, d}))
 		aa = append(aa, assertEls(z.timeL, za, zb, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, zd, ze, za, zb, zc))
-		aa = append(aa, massert.Len(z.m, 5))
+		aa = append(aa, massert.Length(z.m, 5))
 
-		aa = append(aa, massert.Len(z.get(2, time.Now()), 0))
+		aa = append(aa, massert.Length(z.get(2, time.Now()), 0))
 		aa = append(aa, assertEls(z.timeL, za, zb, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, zd, ze, za, zb, zc))
-		aa = append(aa, massert.Len(z.m, 5))
+		aa = append(aa, massert.Length(z.m, 5))
 
 		addrStrs = elsToAddrs(z.get(6, time.Time{}))
 		aa = append(aa, massert.Equal(addrStrs, []string{c, b, a, e, d}))
 		aa = append(aa, assertEls(z.timeL, za, zb, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, zd, ze, za, zb, zc))
-		aa = append(aa, massert.Len(z.m, 5))
+		aa = append(aa, massert.Length(z.m, 5))
 
-		aa = append(aa, massert.Len(z.get(0, time.Time{}), 0))
+		aa = append(aa, massert.Length(z.get(0, time.Time{}), 0))
 		aa = append(aa, assertEls(z.timeL, za, zb, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, zd, ze, za, zb, zc))
-		aa = append(aa, massert.Len(z.m, 5))
+		aa = append(aa, massert.Length(z.m, 5))
 
-		massert.Fatal(t, massert.All(aa...))
+		massert.Require(t, aa...)
 	})
 
 	t.Run("expire", func(t *T) {
@@ -160,19 +160,19 @@ func TestZSet(t *T) {
 		z.expire(expire)
 		aa = append(aa, assertEls(z.timeL, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, ze, zc, zd))
-		aa = append(aa, massert.Len(z.m, 3))
+		aa = append(aa, massert.Length(z.m, 3))
 
 		z.get(1, time.Time{}) // mixing up the order again
 		aa = append(aa, assertEls(z.timeL, zc, zd, ze))
 		aa = append(aa, assertEls(z.usageL, zd, ze, zc))
-		aa = append(aa, massert.Len(z.m, 3))
+		aa = append(aa, massert.Length(z.m, 3))
 
 		// expire everything
 		z.expire(time.Now())
 		aa = append(aa, assertEls(z.timeL))
 		aa = append(aa, assertEls(z.usageL))
-		aa = append(aa, massert.Len(z.m, 0))
+		aa = append(aa, massert.Length(z.m, 0))
 
-		massert.Fatal(t, massert.All(aa...))
+		massert.Require(t, aa...)
 	})
 }

@@ -57,8 +57,8 @@ github.com/mattn/go-sqlite3 v1.9.0/go.mod h1:FPy6KqzDD04eiIsT53CuJW3U88zkxoIYsOq
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/mediocregopher/go-nat v1.1.0 h1:PKHyVNwKG92RncQ9cdN+eJIpTbHcuWdvPDzlmlEqzrY=
 github.com/mediocregopher/go-nat v1.1.0/go.mod h1:sQ8eheR7C1xj3hxt6x3Bsb/MoaTIZ1O2ebtgW2Ed6Ek=
-github.com/mediocregopher/mediocre-go-lib v0.0.0-20190301193741-015edcd69a3d h1:HGw+8OKS3WZ+hvicDw/3fJPbB/iqh9IrqWLsLuBe+PM=
-github.com/mediocregopher/mediocre-go-lib v0.0.0-20190301193741-015edcd69a3d/go.mod h1:osrr4TUdskPyCrRbMwHCq1YuK1ai6pvTOc4N2bBFuwk=
+github.com/mediocregopher/mediocre-go-lib v0.0.0-20190310232337-f5cea76cb7b1 h1:vg4Gxu+GieKtCd6ldgm1Ncg6HFDEx3lbdjH1IEXxhJo=
+github.com/mediocregopher/mediocre-go-lib v0.0.0-20190310232337-f5cea76cb7b1/go.mod h1:osrr4TUdskPyCrRbMwHCq1YuK1ai6pvTOc4N2bBFuwk=
 github.com/microcosm-cc/bluemonday v1.0.1/go.mod h1:hsXNsILzKxV+sX77C5b8FSuKF00vh2OMYv+xgHpAMF4=
 github.com/neelance/astrewrite v0.0.0-20160511093645-99348263ae86/go.mod h1:kHJEU3ofeGjhHklVoIGuVj85JJwZ6kWPaJwCIxgnFmo=
 github.com/neelance/sourcemap v0.0.0-20151028013722-8c68805598ab/go.mod h1:Qr6/a/Q4r9LP1IltGz7tA7iOK1WonHEYhu1HRBA7ZiM=

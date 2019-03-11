@@ -55,10 +55,10 @@ func TestServerPeer(t *T) {
 	}
 	t.Logf("peerA: %v", peerA.RemoteAddr())
 
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertAddr(peerA.PacketConn.LocalAddr(), peerA.RemoteAddr()),
-		massert.Len(peerA.PeerAddrs(), 0),
-	))
+		massert.Length(peerA.PeerAddrs(), 0),
+	)
 
 	// wait a moment to ensure the server processes the ReadyToMingle message
 	time.Sleep(500 * time.Millisecond)
@@ -72,12 +72,12 @@ func TestServerPeer(t *T) {
 
 	b := make([]byte, MaxMessageSize)
 	n, addr, err := peerA.ReadFrom(b)
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(err),
 		massert.Equal(n, 100),
 		assertAddr(connA.LocalAddr(), addr),
 		massert.Equal(b[:n], bExp),
-	))
+	)
 
 	// call ReadFrom on peerA forever
 	go func() {
@@ -113,10 +113,10 @@ func TestServerPeer(t *T) {
 		t.Fatal("peerB should return a timeout error from ReadFrom")
 	}
 
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertAddr(peerB.PacketConn.LocalAddr(), peerB.RemoteAddr()),
-		massert.Len(peerB.PeerAddrs(), 1),
-	))
+		massert.Length(peerB.PeerAddrs(), 1),
+	)
 
-	massert.Fatal(t, assertAddr(peerA.RemoteAddr(), peerB.PeerAddrs()[0]))
+	massert.Require(t, assertAddr(peerA.RemoteAddr(), peerB.PeerAddrs()[0]))
 }
