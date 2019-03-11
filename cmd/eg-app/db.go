@@ -68,8 +68,8 @@ func (db *db) recordMsg(msg msgEvent) error {
 				ON newdata.addr=olddata.addr
 				AND newdata.resource=olddata.resource
     			WHERE newdata.nonce>olddata.nonce
-				OR olddata.addr IS NULL;
-	`, msg.Addr, msg.Resource, msg.MsgType, msg.Nonce,
+				OR olddata.addr IS NULL;`,
+		msg.Addr, msg.Resource, msg.MsgType, msg.Nonce,
 		mtime.NewTS(msg.TS).Float64())
 	return merr.Wrap(err, db.ctx)
 }

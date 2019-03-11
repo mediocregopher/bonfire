@@ -1,4 +1,4 @@
-module main
+module github.com/mediocregopher/bonfire/cmd/eg-app
 
 require (
 	github.com/golang/protobuf v1.3.0 // indirect
