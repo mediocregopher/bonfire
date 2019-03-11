@@ -45,7 +45,6 @@ func (db *db) init() error {
 		`CREATE TABLE peer_resources (
 			addr TEXT,
 			resource TEXT,
-			state INTEGER,
 			nonce INTEGER,
 			lastTS REAL,
 			PRIMARY KEY(addr, resource)
@@ -54,14 +53,13 @@ func (db *db) init() error {
 	return merr.Wrap(err, db.ctx)
 }
 
-func (db *db) recordMsg(msg msgEvent) error {
+func (db *db) recordHave(msg msgEvent) error {
 	_, err := db.Exec(
 		`INSERT OR REPLACE INTO peer_resources
 			SELECT newdata.* FROM
     			(SELECT
 					? AS addr,
 					? AS resource,
-					? AS state,
 					? AS nonce,
 					? AS lastTS) AS newdata
     		LEFT JOIN peer_resources as olddata
@@ -69,8 +67,19 @@ func (db *db) recordMsg(msg msgEvent) error {
 				AND newdata.resource=olddata.resource
     			WHERE newdata.nonce>olddata.nonce
 				OR olddata.addr IS NULL;`,
-		msg.Addr, msg.Resource, msg.MsgType, msg.Nonce,
-		mtime.NewTS(msg.TS).Float64())
+		msg.Addr, msg.Resource, msg.Nonce, mtime.NewTS(msg.TS).Float64(),
+	)
+	return merr.Wrap(err, db.ctx)
+}
+
+func (db *db) recordDontHave(msg msgEvent) error {
+	_, err := db.Exec(
+		`DELETE FROM peer_resources
+		WHERE addr=?
+		AND resource=?
+		AND nonce < ?;`,
+		msg.Addr, msg.Resource, msg.Nonce,
+	)
 	return merr.Wrap(err, db.ctx)
 }
 
@@ -92,7 +101,6 @@ func (db *db) peersWith(resource string, since time.Time) ([]string, error) {
 	err := db.Select(&addrs, `
 		SELECT DISTINCT addr FROM peer_resources
 		WHERE resource = ?
-		AND state = 0
 		AND lastTS >= ?
 	`, resource, mtime.NewTS(since).Float64())
 	return addrs, merr.Wrap(err, db.ctx)

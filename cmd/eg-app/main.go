@@ -25,7 +25,8 @@ type MsgType int
 
 // The possible values of MsgType.
 const (
-	MsgTypeHas MsgType = iota
+	MsgTypeHave MsgType = iota
+	MsgTypeDontHave
 	MsgTypeNeeds
 )
 
@@ -95,12 +96,19 @@ func (app *app) run(ctx context.Context) error {
 				"resource", msg.Resource,
 			)
 			mlog.Info("got message", ctx)
-			if err := app.db.recordMsg(msg); err != nil {
+			var err error
+			switch msg.MsgType {
+			case MsgTypeHave:
+				err = app.db.recordHave(msg)
+			case MsgTypeDontHave:
+				err = app.db.recordDontHave(msg)
+			}
+			if err != nil {
 				mlog.Warn("error processing msg", ctx, merr.Context(err))
 			}
 		case <-ticker.C:
 			msg := Msg{
-				MsgType:  MsgType(mrand.Intn(2)),
+				MsgType:  MsgType(mrand.Intn(3)),
 				Addr:     thisAddr,
 				Resource: mrand.Hex(4),
 				Nonce:    uint64(time.Now().UnixNano()),
