@@ -109,7 +109,7 @@ func TestDB(t *T) {
 		// test that nonces work (recordDontHave)
 		massert.Require(t,
 			// nonce is less than previous, so this should get dropped
-			massert.Nil(db.recordDontHave(msgEvent{
+			massert.Nil(db.recordHave(msgEvent{
 				Msg: Msg{
 					MsgType:  MsgTypeDontHave,
 					Addr:     "0.0.0.0:1",
@@ -121,7 +121,7 @@ func TestDB(t *T) {
 			assertPeersWith("foo", now, "0.0.0.0:1"),
 
 			// nonce is the same as previous, so this should get dropped
-			massert.Nil(db.recordDontHave(msgEvent{
+			massert.Nil(db.recordHave(msgEvent{
 				Msg: Msg{
 					MsgType:  MsgTypeDontHave,
 					Addr:     "0.0.0.0:1",
@@ -133,7 +133,7 @@ func TestDB(t *T) {
 			assertPeersWith("foo", now, "0.0.0.0:1"),
 
 			// nonce is more than previous, so this should get kept
-			massert.Nil(db.recordDontHave(msgEvent{
+			massert.Nil(db.recordHave(msgEvent{
 				Msg: Msg{
 					MsgType:  MsgTypeDontHave,
 					Addr:     "0.0.0.0:1",
@@ -144,8 +144,8 @@ func TestDB(t *T) {
 			})),
 			assertPeersWith("foo", now),
 
-			// double check that there's no rows in the db now
-			assertTotalRows(0),
+			// double check that there's still just one row
+			assertTotalRows(1),
 		)
 	})
 }

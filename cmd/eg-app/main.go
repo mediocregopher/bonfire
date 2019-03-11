@@ -100,10 +100,8 @@ func (app *app) run(ctx context.Context) error {
 			mlog.Info("got message", ctx)
 			var err error
 			switch msg.MsgType {
-			case MsgTypeHave:
+			case MsgTypeHave, MsgTypeDontHave:
 				err = app.db.recordHave(msg)
-			case MsgTypeDontHave:
-				err = app.db.recordDontHave(msg)
 			case MsgTypeNeeds:
 				var peerAddrs []string
 				since := time.Now().Add(-peerActiveTimeout)
