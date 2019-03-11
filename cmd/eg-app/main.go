@@ -50,13 +50,15 @@ type app struct {
 	db   *db
 }
 
+const peerActiveTimeout = 5 * time.Minute
+
 func (app *app) allPeers() (map[string]struct{}, error) {
 	m := make(map[string]struct{})
 	for _, addr := range app.peer.PeerAddrs() {
 		m[addr.String()] = struct{}{}
 	}
 
-	dbPeerAddrs, err := app.db.peers(time.Now().Add(-5 * time.Minute))
+	dbPeerAddrs, err := app.db.peers(time.Now().Add(-peerActiveTimeout))
 	if err != nil {
 		return m, err
 	}
@@ -102,6 +104,25 @@ func (app *app) run(ctx context.Context) error {
 				err = app.db.recordHave(msg)
 			case MsgTypeDontHave:
 				err = app.db.recordDontHave(msg)
+			case MsgTypeNeeds:
+				var peerAddrs []string
+				since := time.Now().Add(-peerActiveTimeout)
+				if peerAddrs, err = app.db.peersWith(msg.Resource, since); err != nil {
+					break
+				}
+				for _, peerAddr := range peerAddrs {
+					resMsg := Msg{
+						MsgType:  MsgTypeHave,
+						Addr:     peerAddr,
+						Resource: msg.Resource,
+						// TODO this should _probably be the stored nonce for
+						// this particular peer/resource
+						Nonce: uint64(time.Now().UnixNano()),
+					}
+					if err = app.peer.Send(resMsg, msg.PeerAddr); err != nil {
+						break
+					}
+				}
 			}
 			if err != nil {
 				mlog.Warn("error processing msg", ctx, merr.Context(err))
