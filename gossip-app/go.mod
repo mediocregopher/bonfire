@@ -1,4 +1,4 @@
-module github.com/mediocregopher/bonfire/cmd/eg-app
+module github.com/mediocregopher/bonfire/gossip-ap
 
 require (
 	github.com/golang/protobuf v1.3.0 // indirect
@@ -14,4 +14,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
 
-replace github.com/mediocregopher/bonfire => ../../
+replace github.com/mediocregopher/bonfire => ../
