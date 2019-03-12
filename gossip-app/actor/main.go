@@ -12,11 +12,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/mediocregopher/bonfire/gossip-app"
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
-	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
@@ -48,6 +48,10 @@ type Msg struct {
 type app struct {
 	peer *peer
 	db   *db
+
+	coordConn  *coordConn
+	coordMsgCh chan gossip.CoordMsg
+	resources  map[string]bool
 }
 
 const peerActiveTimeout = 5 * time.Minute
@@ -92,12 +96,23 @@ func (app *app) run(ctx context.Context) error {
 	thisAddr := app.peer.RemoteAddr().String()
 	for {
 		select {
+		case msg := <-app.coordMsgCh:
+			ctx := mctx.Annotate(ctx, "msgType", msg.Type())
+			mlog.Info("got coord message", ctx)
+			switch msgT := msg.(type) {
+			// TODO Needs
+			case *gossip.CoordMsgHave:
+				app.resources[msgT.Resource] = true
+			case *gossip.CoordMsgDontHave:
+				delete(app.resources, msgT.Resource)
+			}
+
 		case msg := <-app.peer.msgCh:
 			ctx := mctx.Annotate(ctx,
 				"addr", msg.Addr,
 				"resource", msg.Resource,
 			)
-			mlog.Info("got message", ctx)
+			mlog.Info("got peer message", ctx)
 			var err error
 			switch msg.MsgType {
 			case MsgTypeHave, MsgTypeDontHave:
@@ -136,19 +151,22 @@ func (app *app) run(ctx context.Context) error {
 			if err != nil {
 				mlog.Warn("error processing msg", ctx, merr.Context(err))
 			}
+
 		case <-ticker.C:
-			msg := Msg{
-				MsgType:  MsgType(mrand.Intn(3)),
-				Addr:     thisAddr,
-				Resource: mrand.Hex(4),
-				Nonce:    uint64(time.Now().UnixNano()),
-			}
-			mlog.Info("spraying message", mctx.Annotate(ctx,
-				"addr", msg.Addr,
-				"resource", msg.Resource,
-			))
-			if err := app.spray(msg); err != nil {
-				mlog.Warn("error spraying msg", ctx, merr.Context(err))
+			for resource := range app.resources {
+				msg := Msg{
+					MsgType:  MsgTypeHave,
+					Addr:     thisAddr,
+					Resource: resource,
+					Nonce:    uint64(time.Now().UnixNano()),
+				}
+				mlog.Info("spraying message", mctx.Annotate(ctx,
+					"addr", msg.Addr,
+					"resource", msg.Resource,
+				))
+				if err := app.spray(msg); err != nil {
+					mlog.Warn("error spraying msg", ctx, merr.Context(err))
+				}
 			}
 		case <-ctx.Done():
 			return nil
@@ -157,14 +175,23 @@ func (app *app) run(ctx context.Context) error {
 }
 
 func main() {
-	var app app
+	app := app{
+		coordMsgCh: make(chan gossip.CoordMsg),
+		resources:  map[string]bool{},
+	}
 	ctx := m.ServiceContext()
 	ctx, app.peer = withPeer(ctx)
 	ctx, app.db = withDB(ctx)
+	ctx, app.coordConn = withCoordConn(ctx)
 
 	// set up app runtime
 	threadCtx, threadCancel := context.WithCancel(ctx)
 	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
+		threadCtx = mrun.WithThreads(threadCtx, 1, func() error {
+			thisAddr := app.peer.RemoteAddr().String()
+			return app.coordConn.run(threadCtx, thisAddr, app.coordMsgCh)
+		})
+
 		threadCtx = mrun.WithThreads(threadCtx, 1, func() error {
 			return app.run(threadCtx)
 		})

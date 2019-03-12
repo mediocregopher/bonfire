@@ -1,4 +1,4 @@
-module github.com/mediocregopher/bonfire/gossip-ap
+module github.com/mediocregopher/bonfire/gossip-app
 
 require (
 	github.com/golang/protobuf v1.3.0 // indirect
