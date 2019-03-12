@@ -3,21 +3,21 @@
 package gossip
 
 import (
-	"encoding/json"
 	"io"
 
 	"github.com/mediocregopher/mediocre-go-lib/merr"
+	"github.com/vmihailenco/msgpack"
 )
 
 // CoordMsgType describes the type of a particular coordination message.
-type CoordMsgType string
+type CoordMsgType int64
 
 // Enumeration of the different coordination message types.
 const (
-	CoordMsgTypeHello    CoordMsgType = "hello"
-	CoordMsgTypeNeed     CoordMsgType = "need"
-	CoordMsgTypeHave     CoordMsgType = "have"
-	CoordMsgTypeDontHave CoordMsgType = "dontHave"
+	CoordMsgTypeHello CoordMsgType = iota
+	CoordMsgTypeNeed
+	CoordMsgTypeHave
+	CoordMsgTypeDontHave
 )
 
 // CoordMsg describes any of the CoordMsg types available in this package.
@@ -72,8 +72,8 @@ func (*CoordMsgDontHave) Type() CoordMsgType {
 // CoordConn wraps an io.ReadWriteCloser to enable encoding/decoding CoordMsgs.
 type CoordConn struct {
 	rwc io.ReadWriteCloser
-	enc *json.Encoder
-	dec *json.Decoder
+	enc *msgpack.Encoder
+	dec *msgpack.Decoder
 }
 
 // NewCoordConn returns a new CoordConn which wraps the ReadWriteCloser. The
@@ -81,53 +81,43 @@ type CoordConn struct {
 func NewCoordConn(rwc io.ReadWriteCloser) *CoordConn {
 	return &CoordConn{
 		rwc: rwc,
-		enc: json.NewEncoder(rwc),
-		dec: json.NewDecoder(rwc),
+		enc: msgpack.NewEncoder(rwc),
+		dec: msgpack.NewDecoder(rwc),
 	}
-}
-
-type coordMsgWrap struct {
-	Type  CoordMsgType
-	Inner interface{}
 }
 
 // Encode encodes any of the CoordMsg types onto the underlying io.Writer.
 func (cc *CoordConn) Encode(msg CoordMsg) error {
-	return cc.enc.Encode(coordMsgWrap{
-		Type:  msg.Type(),
-		Inner: msg,
-	})
+	if err := cc.enc.EncodeInt64(int64(msg.Type())); err != nil {
+		return merr.Wrap(err)
+	}
+	return merr.Wrap(cc.enc.Encode(msg))
 }
 
 // Decode decodes a single coordination message off the CoordConn. The returned
 // type will be one of the CoordMsg structs, and will be a pointer.
 func (cc *CoordConn) Decode() (CoordMsg, error) {
-	var raw json.RawMessage
-	if err := cc.dec.Decode(&raw); err != nil {
+	typ, err := cc.dec.DecodeInt64()
+	if err != nil {
 		return nil, merr.Wrap(err)
 	}
 
-	var wrap coordMsgWrap
-	if err := json.Unmarshal(raw, &wrap); err != nil {
-		return nil, merr.Wrap(err)
-	}
-
-	var err error
-	switch wrap.Type {
+	var res interface{}
+	switch CoordMsgType(typ) {
 	case CoordMsgTypeHello:
-		wrap.Inner = &CoordMsgHello{}
+		res = &CoordMsgHello{}
 	case CoordMsgTypeNeed:
-		wrap.Inner = &CoordMsgNeed{}
+		res = &CoordMsgNeed{}
 	case CoordMsgTypeHave:
-		wrap.Inner = &CoordMsgHave{}
+		res = &CoordMsgHave{}
 	case CoordMsgTypeDontHave:
-		wrap.Inner = &CoordMsgDontHave{}
+		res = &CoordMsgDontHave{}
 	default:
 		return nil, merr.New("unknown msg type")
 	}
 
-	err = json.Unmarshal(raw, &wrap)
-	return wrap.Inner.(CoordMsg), merr.Wrap(err)
+	err = cc.dec.Decode(res)
+	return res.(CoordMsg), merr.Wrap(err)
 }
 
 // Close calls Close on the underlying io.Closer.
